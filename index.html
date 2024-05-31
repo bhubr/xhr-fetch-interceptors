@@ -1,45 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>XHR/Fetch interceptors</title>
-</head>
-<body>
-  <button id="xhr" type="button">Send request w/ XHR</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XHR/Fetch interceptors</title>
+  </head>
+  <body>
+    <h1>XHR/Fetch interceptors</h1>
+    <button id="setup-xhr-interceptors" type="button">
+      Setup XHR Interceptors
+    </button>
+    <button id="teardown-xhr-interceptors" type="button">
+      Teardown XHR Interceptors
+    </button>
+    <button id="xhr" type="button">Send request w/ XHR</button>
 
-  <script>
-    const originalXHROpen = XMLHttpRequest.prototype.open;
-    const originalXHRSend = XMLHttpRequest.prototype.send;
-    // const originalXHROnReadyStateChange = XMLHttpRequest.prototype.onreadystatechange;
-    XMLHttpRequest.prototype.open = function(method, url) {
-      console.log('XHR request intercepted:', method, url);
-      return originalXHROpen.apply(this, arguments);
-    };
-    XMLHttpRequest.prototype.send = function() {
-      const originalOnReadyStateChange = this.onreadystatechange;
-      console.log('XHR request sent');
-      // console.log(this.onreadystatechange)
-      // override the original onreadystatechange in order to intercept the response
-      this.onreadystatechange = function() {
-        console.log('XHR response intercepted:', this.responseText);
-        if (originalOnReadyStateChange) {
-          originalOnReadyStateChange.apply(this, arguments);
-        }
+    <script>
+      const generateUuidV4 = () => {
+        const array = new Uint32Array(4);
+        self.crypto.getRandomValues(array);
+        const [first, two, three, four] = [...array].map((num) =>
+          num.toString(16).padStart(8, "0")
+        );
+        const second = two.slice(0, 4);
+        const third = two.slice(4, 8);
+        const fourth = three.slice(0, 4);
+        const fifth = three.slice(4, 8) + four;
+        return `${first}-${second}-${third}-${fourth}-${fifth}`;
       };
-      return originalXHRSend.apply(this, arguments);
-    };
 
-    document.getElementById('xhr').addEventListener('click', () => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', 'http://localhost:3060');
-      xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-          console.log('XHR response:', xhr.responseText);
+      generateUuidV4();
+
+      function setupXHRInterceptors() {
+        if (window.__originalXHR__ !== undefined) {
+          console.warn("Interceptors already set up");
+          return;
         }
-      };
-      xhr.send();
-    });
-  </script>
-</body>
+        window.__originalXHR__ = {
+          open: XMLHttpRequest.prototype.open,
+          send: XMLHttpRequest.prototype.send,
+        };
+        if (window.__interceptedRequests__ === undefined) {
+          window.__interceptedRequests__ = [];
+        }
+        XMLHttpRequest.prototype.open = function (method, url) {
+          this.__requestUuid__ = generateUuidV4();
+          console.log("XHR request intercepted:", method, url);
+          window.__interceptedRequests__.push({
+            uuid: this.__requestUuid__,
+            method,
+            url,
+            startedAt: Date.now(),
+          });
+          return window.__originalXHR__.open.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function () {
+          const __self = this;
+          const originalOnReadyStateChange = this.onreadystatechange;
+          console.log("XHR request sent");
+          // override the original onreadystatechange in order to intercept the response
+          this.onreadystatechange = function () {
+            const request = window.__interceptedRequests__.find(
+              (req) => req.uuid === __self.__requestUuid__
+            );
+            request.responseText = __self.responseText;
+            request.status = __self.status;
+            request.statusText = __self.statusText;
+            request.endedAt = Date.now();
+            console.log("XHR response intercepted:", this.responseText);
+            if (originalOnReadyStateChange) {
+              originalOnReadyStateChange.apply(this, arguments);
+            }
+          };
+          return window.__originalXHR__.send.apply(this, arguments);
+        };
+      }
+
+      function teardownXHRInterceptors() {
+        if (window.__originalXHR__ === undefined) {
+          console.warn("Interceptors not set up");
+          return;
+        }
+        XMLHttpRequest.prototype.open = window.__originalXHR__.open;
+        XMLHttpRequest.prototype.send = window.__originalXHR__.send;
+        delete window.__originalXHR__;
+        delete window.__interceptedRequests__;
+      }
+
+      document
+        .getElementById("setup-xhr-interceptors")
+        .addEventListener("click", () => {
+          setupXHRInterceptors();
+        });
+
+      document
+        .getElementById("teardown-xhr-interceptors")
+        .addEventListener("click", () => {
+          teardownXHRInterceptors();
+        });
+
+      document.getElementById("xhr").addEventListener("click", () => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", "http://localhost:3060");
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+            console.log("XHR response:", xhr.responseText);
+          }
+        };
+        xhr.send();
+      });
+    </script>
+  </body>
 </html>
