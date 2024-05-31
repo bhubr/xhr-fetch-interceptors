@@ -40,7 +40,11 @@
         return `${first}-${second}-${third}-${fourth}-${fifth}`;
       };
 
-      generateUuidV4();
+      function clearInterceptedRequests() {
+        if (window.__interceptedRequests__ !== undefined) {
+          window.__interceptedRequests__ = [];
+        }
+      }
 
       function setupXHRInterceptors() {
         if (window.__originalXHR__ !== undefined) {
@@ -116,7 +120,7 @@
           window.__interceptedRequests__.push({
             uuid: requestUuid,
             url,
-            options,
+            method: options.method || "GET",
             type: "fetch",
             startedAt: Date.now(),
           });
