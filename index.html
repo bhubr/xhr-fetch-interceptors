@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XHR/Fetch interceptors</title>
+</head>
+<body>
+  <button id="xhr" type="button">Send request w/ XHR</button>
+
+  <script>
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+    // const originalXHROnReadyStateChange = XMLHttpRequest.prototype.onreadystatechange;
+    XMLHttpRequest.prototype.open = function(method, url) {
+      console.log('XHR request intercepted:', method, url);
+      return originalXHROpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function() {
+      const originalOnReadyStateChange = this.onreadystatechange;
+      console.log('XHR request sent');
+      // console.log(this.onreadystatechange)
+      // override the original onreadystatechange in order to intercept the response
+      this.onreadystatechange = function() {
+        console.log('XHR response intercepted:', this.responseText);
+        if (originalOnReadyStateChange) {
+          originalOnReadyStateChange.apply(this, arguments);
+        }
+      };
+      return originalXHRSend.apply(this, arguments);
+    };
+
+    document.getElementById('xhr').addEventListener('click', () => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', 'http://localhost:3060');
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          console.log('XHR response:', xhr.responseText);
+        }
+      };
+      xhr.send();
+    });
+  </script>
+</body>
+</html>
