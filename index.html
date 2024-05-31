@@ -7,6 +7,8 @@
   </head>
   <body>
     <h1>XHR/Fetch interceptors</h1>
+
+    <h2>XHR</h2>
     <button id="setup-xhr-interceptors" type="button">
       Setup XHR Interceptors
     </button>
@@ -14,6 +16,15 @@
       Teardown XHR Interceptors
     </button>
     <button id="xhr" type="button">Send request w/ XHR</button>
+
+    <h2>Fetch</h2>
+    <button id="setup-fetch-interceptors" type="button">
+      Setup Fetch Interceptors
+    </button>
+    <button id="teardown-fetch-interceptors" type="button">
+      Teardown Fetch Interceptors
+    </button>
+    <button id="fetch" type="button">Send request w/ Fetch</button>
 
     <script>
       const generateUuidV4 = () => {
@@ -50,6 +61,7 @@
             uuid: this.__requestUuid__,
             method,
             url,
+            type: "xhr",
             startedAt: Date.now(),
           });
           return window.__originalXHR__.open.apply(this, arguments);
@@ -84,7 +96,59 @@
         XMLHttpRequest.prototype.open = window.__originalXHR__.open;
         XMLHttpRequest.prototype.send = window.__originalXHR__.send;
         delete window.__originalXHR__;
-        delete window.__interceptedRequests__;
+        // Since __interceptedRequests__ is shared by XHR and fetch interceptors,
+        // we should not delete it here if it's still being used by fetch interceptors
+        // delete window.__interceptedRequests__;
+      }
+
+      function setupFetchInterceptors() {
+        if (window.__originalFetch__ !== undefined) {
+          console.warn("Interceptors already set up");
+          return;
+        }
+        window.__originalFetch__ = window.fetch;
+        if (window.__interceptedRequests__ === undefined) {
+          window.__interceptedRequests__ = [];
+        }
+        window.fetch = function (url, options) {
+          const requestUuid = generateUuidV4();
+          console.log("Fetch request intercepted:", url, options);
+          window.__interceptedRequests__.push({
+            uuid: requestUuid,
+            url,
+            options,
+            type: "fetch",
+            startedAt: Date.now(),
+          });
+          return window.__originalFetch__(url, options).then((response) => {
+            response
+              .clone()
+              .text()
+              .then((body) => {
+                const request = window.__interceptedRequests__.find(
+                  (req) => req.uuid === requestUuid
+                );
+                request.responseText = body;
+                request.status = response.status;
+                request.statusText = response.statusText;
+                request.endedAt = Date.now();
+                console.log("Fetch response intercepted:", body);
+              });
+            return response;
+          });
+        };
+      }
+
+      function teardownFetchInterceptors() {
+        if (window.__originalFetch__ === undefined) {
+          console.warn("Interceptors not set up");
+          return;
+        }
+        window.fetch = window.__originalFetch__;
+        delete window.__originalFetch__;
+        // Since __interceptedRequests__ is shared by XHR and fetch interceptors,
+        // we should not delete it here if it's still being used by XHR interceptors
+        // delete window.__interceptedRequests__;
       }
 
       document
@@ -108,6 +172,26 @@
           }
         };
         xhr.send();
+      });
+
+      document
+        .getElementById("setup-fetch-interceptors")
+        .addEventListener("click", () => {
+          setupFetchInterceptors();
+        });
+
+      document
+        .getElementById("teardown-fetch-interceptors")
+        .addEventListener("click", () => {
+          teardownFetchInterceptors();
+        });
+
+      document.getElementById("fetch").addEventListener("click", () => {
+        fetch("http://localhost:3060")
+          .then((response) => response.text())
+          .then((data) => {
+            console.log("Fetch response:", data);
+          });
       });
     </script>
   </body>
